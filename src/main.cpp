@@ -17,7 +17,7 @@ bool timerA = true;  // Start with timer A active
 
 int nowMIlli = 0;
 int elaspeMilli = 0;
-String wifiPowerInput = "-80";  // TODO get this value from wifi esp32
+int wifiPowerInput = -80;  // TODO get this value from wifi esp32
 
 
 bool onbardPinOn = false;
@@ -29,7 +29,8 @@ int LOCK = 5;
 int UNLOCK = 18;
 bool seeKey = false;
 int power = -100;
-String displayValue = "Not set yet";  // This is read-only
+String inputString = "";
+//String displayValue = "Not set yet";  // This is read-only
 
 
 
@@ -49,12 +50,6 @@ void setup() {
   pBLEScan = BLEDevice::getScan(); // create new scan
   //pBLEScan->setActiveScan(true);   // active scan = request more data
   //pBLEScan->setActiveScan(false);
-
-
-
-
-
-
   pinMode(2,OUTPUT);
   digitalWrite(2,HIGH);
 
@@ -62,6 +57,7 @@ void setup() {
   digitalWrite(LOCK, LOW);
   pinMode(UNLOCK, OUTPUT);
   digitalWrite(UNLOCK, LOW);
+  Serial2.begin(9600, SERIAL_8N1, 16, 17); // RX=16, TX=17
 }
 
 void loop() {
@@ -137,8 +133,28 @@ if(!clientConnected){
 }
   // You can still do other stuff here while waiting...
 
+    // 
+  if (Serial2.available()) {
+    inputString = Serial2.readStringUntil('\n');
+    Serial.println("Raw data: " + inputString);
 
-    //
+    // Split the string by commas
+    int firstComma = inputString.indexOf(',');
+    int secondComma = inputString.indexOf(',', firstComma + 1);
+
+    if (firstComma > 0 && secondComma > 0) {
+      wifiPowerInput = inputString.substring(0, firstComma).toInt();
+      wifiLock = inputString.substring(firstComma + 1, secondComma).toInt();
+      wifiUnlock = inputString.substring(secondComma + 1).toInt();
+
+      Serial.print("Power: ");
+      Serial.print(wifiPowerInput);
+      Serial.print(" °C, Lock: ");
+      Serial.print(wifiLock);
+      Serial.print(" %, Unlock: ");
+      Serial.println(wifiUnlock);
+    }
+  }
   
   delay(20);
   doBluetooth();
@@ -162,12 +178,12 @@ void isActionNeeded(){
     //if see key unlock once
   
     Serial.print("Power is ");
-    Serial.println(power);
-    displayValue = power;
-    int inValue = wifiPowerInput.toInt();
+    //Serial.println(power);
+    //wifiPowerInput = power;
+    //int inValue = wifiPowerInput.toInt();
     Serial.print("Input value and threshold is ");
-    Serial.println(inValue);
-    if(power > inValue && state == true){
+    //Serial.println(inValue);
+    if(power > wifiPowerInput && state == true){
         digitalWrite(UNLOCK,HIGH);
         digitalWrite(LOCK, LOW);
         delay(500);
