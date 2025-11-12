@@ -8,8 +8,8 @@
 
 bool timer1 = false;
 bool timer2 = false;
-bool wifiLock = false;  //TODO pass from wifi
-bool wifiUnlock = false;//TODO passed from wifi
+int wifiLock = 0;  //TODO pass from wifi
+int wifiUnlock = 0;//TODO passed from wifi
 unsigned long previousMillis = 0;
 const unsigned long interval = 30000; // 30 seconds
 bool clientConnected = false;
@@ -18,6 +18,8 @@ bool timerA = true;  // Start with timer A active
 int nowMIlli = 0;
 int elaspeMilli = 0;
 int wifiPowerInput = -80;  // TODO get this value from wifi esp32
+int currentLockValue = 0;
+bool lockStateChange = false;
 
 
 bool onbardPinOn = false;
@@ -40,6 +42,8 @@ void isActionNeeded();
 void pauseWiFiRunBluetooth();
 void doBluetooth();
 void pauseBluetoothDoWiFi();
+void unlockit();
+void lockit();
 
 
 void setup() {
@@ -53,7 +57,7 @@ void setup() {
   pinMode(2,OUTPUT);
   digitalWrite(2,HIGH);
 
-  pinMode(LOCK, OUTPUT);
+  pinMode(LOCK, OUTPUT); 
   digitalWrite(LOCK, LOW);
   pinMode(UNLOCK, OUTPUT);
   digitalWrite(UNLOCK, LOW);
@@ -62,52 +66,7 @@ void setup() {
 
 void loop() {
 
- /*BLEScanResults foundDevices = pBLEScan->start(scanTime, false);
-  Serial.print("Devices found: ");
-  Serial.println(foundDevices.getCount());
 
-  for (int i = 0; i < foundDevices.getCount(); i++) {
-    BLEAdvertisedDevice device = foundDevices.getDevice(i);
-
-    // Blue Charm iBeacons use manufacturer data in Apple's format
-    std::string md = device.getManufacturerData();
-
-    if (md.length() >= 25) { // iBeacon format is 25 bytes after Apple header
-      const uint8_t* data = (const uint8_t*)md.data();
-
-      // Check Apple company ID (0x004C)
-      if (data[0] == 0x4C && data[1] == 0x00 && data[2] == 0x02 && data[3] == 0x15) {
-        Serial.println("----- iBeacon Found -----");
-
-        char uuid[37];
-        sprintf(uuid,
-          "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
-          data[4], data[5], data[6], data[7],
-          data[8], data[9],
-          data[10], data[11],
-          data[12], data[13],
-          data[14], data[15], data[16], data[17], data[18], data[19]);
-
-        uint16_t major = (data[20] << 8) | data[21];
-        uint16_t minor = (data[22] << 8) | data[23];
-        int8_t txPower = (int8_t)data[24];
-
-        Serial.print("UUID: "); Serial.println(uuid);
-        Serial.print("Major: "); Serial.println(major);
-        Serial.print("Minor: "); Serial.println(minor);
-        Serial.print("TX Power: "); Serial.println(txPower);
-        Serial.print("RSSI: "); Serial.println(device.getRSSI());
-        String newUuid = String(uuid);
-        //String strPower = String(txPower);
-        power = device.getRSSI();
-        if(newUuid.equals("426C7565-4368-6172-6D42-6561636F6E73")){
-          Serial.println("Bingo");   
-          isActionNeeded();
-        }
-
-      }
-    }
-  }*/
 if(!clientConnected){
   //Serial.println("Scan done!\n");
    unsigned long currentMillis = millis();
@@ -134,11 +93,13 @@ if(!clientConnected){
   // You can still do other stuff here while waiting...
 
     // 
-  if (Serial2.available()) {
-    inputString = Serial2.readStringUntil('\n');
-    Serial.println("Raw data: " + inputString);
+static String inputString = "";
 
-    // Split the string by commas
+while (Serial2.available()) {
+  char c = Serial2.read();
+  if (c == '\n') {
+    //Serial.println("Raw data: " + inputString);
+
     int firstComma = inputString.indexOf(',');
     int secondComma = inputString.indexOf(',', firstComma + 1);
 
@@ -146,15 +107,33 @@ if(!clientConnected){
       wifiPowerInput = inputString.substring(0, firstComma).toInt();
       wifiLock = inputString.substring(firstComma + 1, secondComma).toInt();
       wifiUnlock = inputString.substring(secondComma + 1).toInt();
+      //TODO need to only run this when voalue changes
+if (wifiUnlock == 1 && state == true) {
+  Serial.println("Unlock signal detected");
+  unlockit();
+  state = false;
+  wifiUnlock = 0;  // reset
+}
 
-      Serial.print("Power: ");
-      Serial.print(wifiPowerInput);
-      Serial.print(" °C, Lock: ");
-      Serial.print(wifiLock);
-      Serial.print(" %, Unlock: ");
-      Serial.println(wifiUnlock);
+if (wifiLock == 1 && state == false) {
+  Serial.println("Lock signal detected");
+  lockit();
+  state = true;
+  wifiLock = 0;  // reset
+}
+      //Serial.print("Power: ");
+      //Serial.print(wifiPowerInput);
+      //Serial.print(" °C, Lock: ");
+      //Serial.print(wifiLock);
+      //Serial.print(" %, Unlock: ");
+      //Serial.println(wifiUnlock);*/
     }
+
+    inputString = ""; // clear for next packet
+  } else {
+    inputString += c;
   }
+}
   
   delay(20);
   doBluetooth();
@@ -184,20 +163,12 @@ void isActionNeeded(){
     Serial.print("Input value and threshold is ");
     //Serial.println(inValue);
     if(power > wifiPowerInput && state == true){
-        digitalWrite(UNLOCK,HIGH);
-        digitalWrite(LOCK, LOW);
-        delay(500);
-        digitalWrite(UNLOCK,LOW);
-        digitalWrite(LOCK, LOW);
+      unlockit();
         state = false;
         Serial.println("state is false");
     }
     if(power <= -80 && state == false){
-      digitalWrite(UNLOCK, LOW);
-      digitalWrite(LOCK, HIGH);
-      delay(500);
-      digitalWrite(UNLOCK, LOW);
-      digitalWrite(LOCK, LOW);
+      lockit();
       state = true;
       Serial.println("state is true");
     }
@@ -272,15 +243,20 @@ void doBluetooth(){
   }
 }
 
-/*void pauseBluetoothDoWiFi(){
-  Serial.println("Wifi Running");
-  pBLEScan->setActiveScan(false);
+void unlockit(){
+          digitalWrite(UNLOCK,HIGH);
+        digitalWrite(LOCK, LOW);
+        delay(500);
+        digitalWrite(UNLOCK,LOW);
+        digitalWrite(LOCK, LOW);
+        Serial.println("UNLOCKING");
+}
 
-        // Turn Wi-Fi ON (AP mode)
-      WiFi.mode(WIFI_AP);
-      WiFi.softAP(ssid, password);
-      Serial.println("Wi-Fi turned ON");
-      Serial.print("AP IP: ");
-      Serial.println(WiFi.softAPIP());
-
-}*/
+void lockit(){
+      digitalWrite(UNLOCK, LOW);
+      digitalWrite(LOCK, HIGH);
+      delay(500);
+      digitalWrite(UNLOCK, LOW);
+      digitalWrite(LOCK, LOW);
+      Serial.println("LOCKING");
+}
